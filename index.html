@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ORDRE D'EXÉCUTION</title>
+    <style>
+        :root { --a4-ratio: 1.414; }
+
+        body {
+            background-color: #050505;
+            color: #1a1a1a;
+            font-family: "Times New Roman", Times, serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        .page-scaler {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .a4-page {
+            background-color: #fcfcfc;
+            height: 98vh; 
+            width: calc(98vh / var(--a4-ratio));
+            padding: 80px 70px; /* 상단 여백을 충분히 주어 안정감 확보 */
+            box-sizing: border-box;
+            box-shadow: 0 0 60px rgba(0,0,0,1);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 제목 섹션: 헤더 없이 깔끔하게 시작 */
+        .title-container {
+            text-align: center;
+            margin-bottom: 70px;
+        }
+
+        .line { border-top: 1px solid #000; width: 100%; margin: 18px 0; }
+
+        h1 {
+            font-size: 34px;
+            letter-spacing: 7px;
+            margin: 0;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        /* 정보 섹션: 스크린샷의 정렬 방식 재현 */
+        .case-info {
+            font-size: 15px;
+            line-height: 2.2;
+            text-align: left;
+            margin-bottom: 20px;
+        }
+
+        .info-row { margin-bottom: 10px; }
+
+        .label { 
+            font-weight: bold; 
+            text-decoration: underline; 
+            margin-right: 15px;
+        }
+
+        /* 이미지 영역: 종이의 중심을 크게 차지 */
+        .meme-target {
+            width: 100%;
+            flex-grow: 1;
+            max-height: 400px;
+            background-color: rgba(0,0,0,0.01);
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            margin: 40px 0;
+            border: 1px dashed #bbb;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            color: #aaa;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* 하단 영역 */
+        .bottom-area { margin-top: auto; }
+
+        .status-line {
+            font-size: 14px;
+            line-height: 1.6;
+            text-align: left;
+            margin-bottom: 25px;
+        }
+
+        .action-call {
+            font-weight: bold;
+            color: #b71c1c;
+            font-size: 17px;
+            margin-bottom: 45px;
+            display: none;
+        }
+
+        .signature {
+            text-align: right;
+            font-size: 12px;
+            font-style: italic;
+            color: #555;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+        }
+
+        #file-upload { display: none; }
+
+        /* 도장 효과 */
+        .stamp {
+            position: absolute;
+            color: rgba(183, 28, 28, 0.95);
+            font-size: 90px;
+            font-weight: 900;
+            border: 14px solid rgba(183, 28, 28, 0.95);
+            padding: 15px 55px;
+            border-radius: 4px;
+            transform: translate(-50%, -50%) rotate(-25deg) scale(6);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .stamp.active {
+            transform: translate(-50%, -50%) rotate(-25deg) scale(1);
+            opacity: 1;
+            transition: transform 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .fade-out { animation: finalFade 2.5s forwards 1.5s; }
+        @keyframes finalFade { to { opacity: 0; filter: brightness(0); } }
+    </style>
+</head>
+<body>
+
+    <div class="page-scaler">
+        <div class="a4-page" id="execution-doc">
+            <!-- 헤더 제거됨 -->
+
+            <div class="title-container">
+                <div class="line"></div>
+                <h1>ORDRE D'EXÉCUTION</h1>
+                <div class="line"></div>
+            </div>
+            
+            <div class="case-info">
+                <div class="info-row">
+                    <span class="label">DOSSIER :</span> N° 2026-FR-MÈME
+                </div>
+                <div class="info-row">
+                    <span class="label">ACCUSÉ :</span> <span id="def-text">DONNÉE NON IDENTIFIÉE</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">CHEF D'ACCUSATION :</span> CONTEXTE VIDE, RÉPÉTITION CYCLIQUE ET NUISANCE ALGORITHMIQUE
+                </div>
+            </div>
+
+            <input type="file" id="file-upload" accept="image/*">
+            <div class="meme-target" id="meme-target">
+                [ SÉLECTIONNER LA DONNÉE À FRAGMENTER ]
+            </div>
+
+            <div class="bottom-area">
+                <p class="status-line" id="statut-text">
+                    <strong>STATUT :</strong> En attente de l'identification visuelle du sujet. Veuillez téléverser la DONNÉE pour valider la sentence.
+                </p>
+                <div class="action-call" id="action-call">
+                    >> CLIQUEZ POUR PROCÉDER À L'EXÉCUTION.
+                </div>
+                <div class="signature">
+                    Document certifié par le Système de Surveillance
+                </div>
+            </div>
+
+            <div class="stamp" id="execution-stamp">EXÉCUTÉ</div>
+        </div>
+    </div>
+
+    <script>
+        const doc = document.getElementById('execution-doc');
+        const targetBox = document.getElementById('meme-target');
+        const fileInput = document.getElementById('file-upload');
+        const statutText = document.getElementById('statut-text');
+        const actionCall = document.getElementById('action-call');
+        const defText = document.getElementById('def-text');
+        const stamp = document.getElementById('execution-stamp');
+        
+        let isUploaded = false; 
+        let isExecuted = false; 
+
+        targetBox.addEventListener('click', () => { if (!isUploaded) fileInput.click(); });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const imageData = event.target.result;
+                    targetBox.style.backgroundImage = `url('${imageData}')`;
+                    targetBox.innerHTML = ''; 
+                    targetBox.style.border = '2px solid #000'; 
+                    sessionStorage.setItem('targetMeme', imageData);
+                    
+                    isUploaded = true;
+                    doc.style.cursor = 'crosshair';
+                    defText.innerHTML = 'DONNÉE IDENTIFIÉE (Cible confirmée)';
+                    statutText.innerHTML = "L'effacement définitif de ladite DONNÉE est ordonné.";
+                    actionCall.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        doc.addEventListener('click', (e) => {
+            if (!isUploaded || isExecuted || e.target === fileInput) return;
+            isExecuted = true;
+            const rect = doc.getBoundingClientRect();
+            stamp.style.left = (e.clientX - rect.left) + 'px';
+            stamp.style.top = (e.clientY - rect.top) + 'px';
+            stamp.classList.add('active');
+            document.body.style.backgroundColor = '#300000';
+            setTimeout(() => { document.body.style.backgroundColor = '#050505'; }, 100);
+            doc.classList.add('fade-out');
+            setTimeout(() => { window.location.href = 'step2.html'; }, 3500);
+        });
+    </script>
+</body>
+</html>

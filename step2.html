@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Étape 2 : La Fragmentation</title>
+    <style>
+        body {
+            background-color: #050505;
+            color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            overflow: hidden; 
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .header-text {
+            position: absolute;
+            top: 40px;
+            text-align: center;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.8rem;
+            letter-spacing: 6px;
+            color: #eee;
+            text-transform: uppercase;
+        }
+
+        p {
+            color: #666;
+            margin-top: 15px;
+            font-size: 0.9rem;
+            letter-spacing: 1px;
+        }
+
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            cursor: crosshair;
+        }
+
+        #status-panel {
+            position: absolute;
+            bottom: 30px;
+            width: 600px;
+            background-color: rgba(10, 10, 10, 0.98);
+            padding: 25px 35px;
+            border: 1px solid #222;
+            box-shadow: 0 0 30px rgba(0,0,0,1);
+            text-align: center;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        #status-text {
+            font-size: 0.85rem;
+            font-weight: bold;
+            color: #aaa;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        #progress-bar {
+            width: 100%;
+            height: 10px;
+            background: #111;
+            margin-top: 20px;
+            border: 1px solid #333;
+            overflow: hidden;
+        }
+
+        #progress-fill {
+            width: 0%;
+            height: 100%;
+            background: #888; 
+            transition: width 0.15s;
+        }
+
+        .fade-out {
+            animation: finalFade 2s forwards;
+        }
+
+        @keyframes finalFade {
+            to { opacity: 0; filter: blur(15px); transform: scale(1.02); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header-text">
+        <!-- DATA를 DONNÉE로 변경 -->
+        <h1>FRAGMENTATION DE LA DONNÉE</h1>
+        <p>Broyez manuellement la structure pour libérer le flux.</p>
+    </div>
+
+    <canvas id="dust-canvas"></canvas>
+
+    <div id="status-panel">
+        <div id="status-text">PROGRESSION DE LA DESTRUCTION : 0%</div>
+        <div id="progress-bar"><div id="progress-fill"></div></div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('dust-canvas');
+        const ctx = canvas.getContext('2d');
+        const statusText = document.getElementById('status-text');
+        const progressFill = document.getElementById('progress-fill');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const imgSrc = sessionStorage.getItem('targetMeme');
+        if (!imgSrc) {
+            window.location.href = 'index.html';
+        }
+
+        let particles = [];
+        const particleSize = 4; 
+        const brushRadius = 30; 
+        let totalParticles = 0;
+        let dustCount = 0;
+        let isTransitioning = false;
+
+        let floorLevels = new Float32Array(canvas.width);
+        const baseFloorY = canvas.height - 150; 
+
+        for (let i = 0; i < canvas.width; i++) {
+            floorLevels[i] = baseFloorY;
+        }
+
+        const mouse = { x: -1000, y: -1000, isDown: false };
+
+        canvas.addEventListener('mousedown', (e) => { mouse.isDown = true; updateMouse(e); });
+        canvas.addEventListener('mouseup', () => { mouse.isDown = false; });
+        canvas.addEventListener('mousemove', (e) => { updateMouse(e); });
+        
+        function updateMouse(e) {
+            const rect = canvas.getBoundingClientRect();
+            mouse.x = e.clientX - rect.left;
+            mouse.y = e.clientY - rect.top;
+        }
+
+        const img = new Image();
+        img.src = imgSrc;
+        img.onload = initParticles;
+
+        function initParticles() {
+            const maxSize = 600; 
+            const scale = Math.min(maxSize / img.width, maxSize / img.height);
+            const w = img.width * scale;
+            const h = img.height * scale;
+            
+            const offsetX = (canvas.width - w) / 2;
+            const offsetY = (canvas.height - h) / 2 - 30;
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = w;
+            tempCanvas.height = h;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.drawImage(img, 0, 0, w, h);
+            
+            const imageData = tempCtx.getImageData(0, 0, w, h).data;
+
+            for (let y = 0; y < h; y += particleSize) {
+                for (let x = 0; x < w; x += particleSize) {
+                    const index = (Math.floor(y) * Math.floor(w) + Math.floor(x)) * 4;
+                    if (imageData[index + 3] > 128) { 
+                        particles.push({
+                            x: offsetX + x,
+                            y: offsetY + y,
+                            color: `rgba(${imageData[index]}, ${imageData[index+1]}, ${imageData[index+2]}, 1)`,
+                            isDust: false,
+                            isLanded: false,
+                            vx: 0,
+                            vy: 0
+                        });
+                    }
+                }
+            }
+            totalParticles = particles.length;
+            animate(); 
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+
+                if (!p.isDust) {
+                    if (mouse.isDown) {
+                        const dx = mouse.x - p.x;
+                        const dy = mouse.y - p.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+
+                        if (dist < brushRadius) {
+                            p.isDust = true;
+                            dustCount++;
+                            p.vx = (Math.random() - 0.5) * 12;
+                            p.vy = (Math.random() - 0.5) * 12 - 4;
+                            updateProgress();
+                        }
+                    }
+                } else if (!p.isLanded) {
+                    p.vx += (Math.random() - 0.5) * 1.2; 
+                    p.vy += 0.5;
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vx *= 0.94;
+                    p.vy *= 0.98;
+
+                    let col = Math.floor(p.x);
+                    if (col < 0) col = 0;
+                    if (col >= canvas.width) col = canvas.width - 1;
+
+                    if (p.y >= floorLevels[col]) {
+                        p.y = floorLevels[col];
+                        p.vx = 0;
+                        p.vy = 0;
+                        p.isLanded = true;
+                        let raiseAmount = particleSize * 0.4;
+                        floorLevels[col] -= raiseAmount;
+                        let spreadRadius = 5;
+                        for (let j = 1; j <= spreadRadius; j++) {
+                            let val = raiseAmount * (1 - j / (spreadRadius + 1));
+                            if (col - j >= 0) floorLevels[col - j] -= val;
+                            if (col + j < canvas.width) floorLevels[col + j] -= val;
+                        }
+                    }
+                }
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, particleSize, particleSize);
+            }
+            requestAnimationFrame(animate);
+        }
+
+        function updateProgress() {
+            let percent = (dustCount / totalParticles) * 100;
+            statusText.innerText = `PROGRESSION DE LA DESTRUCTION : ${Math.floor(percent)}%`;
+            progressFill.style.width = percent + '%';
+
+            if (dustCount === totalParticles && !isTransitioning) {
+                isTransitioning = true;
+                let exportData = [];
+                particles.forEach(p => {
+                    exportData.push({ x: Math.round(p.x), y: Math.round(p.y), c: p.color });
+                });
+                sessionStorage.setItem('dustPile', JSON.stringify(exportData));
+                
+                setTimeout(() => {
+                    document.body.classList.add('fade-out'); 
+                    setTimeout(() => { window.location.href = 'step3.html'; }, 2000); 
+                }, 2500);
+            }
+        }
+    </script>
+</body>
+</html>

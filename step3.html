@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Étape 3 : Le Scellement & Les Funérailles</title>
+    <style>
+        body {
+            /* 하늘색 배경으로 변경 */
+            background-color: #a8d8ea; 
+            color: #333;
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .header-text {
+            position: absolute;
+            top: 30px;
+            text-align: center;
+            z-index: 10;
+            pointer-events: none;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px 30px;
+            border-radius: 2px;
+            border: 1px solid #ddd;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: all 1s ease;
+        }
+
+        .header-text.sealed-mode {
+            top: 50px;
+            border: 1px solid #999;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.8rem;
+            letter-spacing: 3px;
+            color: #222;
+            text-transform: uppercase;
+        }
+
+        p {
+            margin-top: 10px;
+            font-weight: bold;
+            color: #555;
+            font-size: 1rem;
+        }
+
+        #score-board {
+            display: none;
+            margin-top: 15px;
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #4d7c0f; /* 잔디색과 통일감 */
+            letter-spacing: 5px;
+        }
+
+        #blackout {
+            position: absolute;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: black;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 999;
+            transition: opacity 3s ease;
+        }
+
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            cursor: grab; 
+        }
+
+        .shake {
+            animation: shakeAnim 0.4s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes shakeAnim {
+            0%, 100% { transform: translate3d(0, 0, 0); }
+            10%, 30%, 50%, 70%, 90% { transform: translate3d(-10px, 10px, 0); }
+            20%, 40%, 60%, 80% { transform: translate3d(10px, -10px, 0); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="blackout"></div>
+
+    <div class="header-text" id="header-container">
+        <h1 id="main-title">LE SCELLEMENT</h1>
+        <p id="instruction-text">1. Jetez tous les débris de la DONNÉE dans l'abîme. (Progression : 0%)</p>
+        <div id="score-board">HOMMAGES RENDUS : 00000</div>
+    </div>
+
+    <canvas id="ground-canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('ground-canvas');
+        const ctx = canvas.getContext('2d');
+        const instruction = document.getElementById('instruction-text');
+        const mainTitle = document.getElementById('main-title');
+        const headerContainer = document.getElementById('header-container');
+        const scoreBoard = document.getElementById('score-board');
+        const blackout = document.getElementById('blackout');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const dustPileStr = sessionStorage.getItem('dustPile');
+        if (!dustPileStr) {
+            alert('Aucune donnée trouvée. Retour à l\'étape 1.');
+            window.location.href = 'index.html';
+        }
+
+        let particles = [];
+        const particleSize = 4;
+        let globalParticlesInHole = 0; 
+
+        const holeW = 340;
+        const holeStartX = (canvas.width - holeW) / 2;
+        const holeEndX = holeStartX + holeW;
+        const baseFloorY = canvas.height - 180; 
+        const holeDepth = canvas.height - 20;   
+
+        const headW = 140; 
+        const headH = 170; 
+        const headX = holeStartX + holeW / 2 - headW / 2;
+        let headY = 0; 
+
+        let floorLevels = new Float32Array(canvas.width);
+        for(let i = 0; i < canvas.width; i++) {
+            if (i > holeStartX && i < holeEndX) floorLevels[i] = holeDepth;
+            else floorLevels[i] = baseFloorY;
+        }
+
+        let tombstone = {
+            x: holeStartX, w: holeW, h: holeDepth - baseFloorY, y: 200, 
+            isDragged: false, isFalling: false, isSealed: false
+        };
+
+        const mouse = { x: -1000, y: -1000, isDown: false };
+        let heldParticles = []; 
+        const shovelRadius = 75; 
+
+        let respectsCount = 0;
+        let flowers = [];
+        let lastInteractionTime = Date.now();
+        let isSystemResetting = false;
+
+        canvas.addEventListener('mousedown', (e) => { 
+            if (tombstone.isSealed) return;
+            mouse.isDown = true; 
+            updateMouse(e); 
+            checkTombstoneGrab(); 
+        });
+        canvas.addEventListener('mouseup', () => { 
+            if (tombstone.isSealed) return;
+            mouse.isDown = false; 
+            dropContents(); 
+            releaseTombstone(); 
+        });
+        canvas.addEventListener('mousemove', (e) => { 
+            if (tombstone.isSealed) return;
+            updateMouse(e); 
+            dragTombstone(); 
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (tombstone.isSealed && !isSystemResetting && (e.key === 'f' || e.key === 'F')) {
+                payRespects();
+            }
+        });
+        
+        function updateMouse(e) {
+            const rect = canvas.getBoundingClientRect();
+            mouse.x = e.clientX - rect.left;
+            mouse.y = e.clientY - rect.top;
+        }
+
+        function initTransplantedPile() {
+            let savedData = JSON.parse(dustPileStr);
+            let minX = Infinity, maxX = -Infinity, maxY = -Infinity;
+            savedData.forEach(p => {
+                if(p.x < minX) minX = p.x; if(p.x > maxX) maxX = p.x; if(p.y > maxY) maxY = p.y;
+            });
+
+            let origW = maxX - minX;
+            let leftZoneW = holeStartX - 60; 
+            let scale = origW > leftZoneW ? leftZoneW / origW : 1;
+            let targetCenterX = holeStartX / 2; 
+
+            savedData.forEach(p => {
+                let newX = targetCenterX + (p.x - (minX + maxX)/2) * scale;
+                let newY = baseFloorY - (maxY - p.y) * scale; 
+                particles.push({ x: newX, y: newY, color: p.c, vx: 0, vy: 0, state: 0 });
+            });
+            animate(); 
+        }
+        initTransplantedPile();
+
+        function checkTombstoneGrab() {
+            if (tombstone.isSealed) return;
+            if (globalParticlesInHole < particles.length) return;
+            if (mouse.x > tombstone.x && mouse.x < tombstone.x + tombstone.w && mouse.y < tombstone.y + 200) {
+                tombstone.isDragged = true;
+            }
+        }
+
+        function dragTombstone() {
+            if (tombstone.isDragged && !tombstone.isSealed) {
+                tombstone.y = mouse.y - 80; 
+                if (tombstone.y > baseFloorY) tombstone.y = baseFloorY; 
+            }
+        }
+
+        function releaseTombstone() {
+            if (tombstone.isDragged) {
+                tombstone.isDragged = false;
+                if (tombstone.y > baseFloorY - 200) tombstone.isFalling = true;
+                else tombstone.y = 200; 
+            }
+        }
+
+        function handleDebris() {
+            if (!mouse.isDown || tombstone.isDragged || tombstone.isSealed) return;
+            if (heldParticles.length < 800) { 
+                for (let p of particles) {
+                    if (p.state === 0 || p.state === 2 || p.state === 3) { 
+                        let dx = p.x - mouse.x; let dy = p.y - mouse.y;
+                        if (dx*dx + dy*dy < shovelRadius*shovelRadius) {
+                            p.state = 1; heldParticles.push(p);
+                        }
+                    }
+                }
+            }
+        }
+
+        function dropContents() {
+            heldParticles.forEach(p => { p.state = 2; p.vy = 2; p.vx = (Math.random() - 0.5) * 6; });
+            heldParticles = [];
+        }
+
+        function payRespects() {
+            lastInteractionTime = Date.now();
+            respectsCount++;
+            scoreBoard.innerText = `HOMMAGES RENDUS : ${String(respectsCount).padStart(5, '0')}`;
+
+            let spawnX = canvas.width / 2 + (Math.random() - 0.5) * 500;
+            flowers.push({
+                x: spawnX, y: -30, vx: (Math.random() - 0.5) * 2, vy: 2 + Math.random() * 3, 
+                rotation: Math.random() * Math.PI * 2, rotSpeed: (Math.random() - 0.5) * 0.1, isLanded: false
+            });
+
+            if (respectsCount >= 66 && !isSystemResetting) {
+                triggerSystemReset("[SYSTÈME] Excès de deuil détecté. Vidage de la mémoire.");
+            }
+        }
+
+        function smoothTerrain() {
+            let newFloor = new Float32Array(canvas.width);
+            newFloor[0] = floorLevels[0]; newFloor[canvas.width - 1] = floorLevels[canvas.width - 1];
+
+            for (let i = 1; i < canvas.width - 1; i++) {
+                if (tombstone.isSealed && (i === Math.floor(headX) || i === Math.floor(headX + headW))) newFloor[i] = floorLevels[i];
+                else if (!tombstone.isSealed && (i === Math.floor(holeStartX) || i === Math.floor(holeEndX))) newFloor[i] = floorLevels[i];
+                else newFloor[i] = (floorLevels[i-1] + floorLevels[i]*2 + floorLevels[i+1]) / 4;
+            }
+            floorLevels = newFloor;
+        }
+
+        function drawTombstone() {
+            let ty = tombstone.y;
+            // 비석 본체 (흙 속에 묻히는 부분)
+            ctx.fillStyle = "#2a2a2a"; ctx.fillRect(tombstone.x, ty, tombstone.w, tombstone.h);
+            ctx.strokeStyle = "#111"; ctx.lineWidth = 2; ctx.strokeRect(tombstone.x, ty, tombstone.w, tombstone.h);
+
+            // 상단 머릿돌 (라운드)
+            let curHeadY = ty - headH;
+            ctx.fillStyle = "#8a8b8c"; ctx.beginPath(); ctx.roundRect(headX, curHeadY, headW, headH, [40, 40, 0, 0]); ctx.fill();
+            ctx.strokeStyle = "#555"; ctx.lineWidth = 3; ctx.stroke();
+
+            ctx.fillStyle = "#222"; ctx.font = "bold 40px serif"; ctx.textAlign = "center";
+            ctx.fillText("R.I.P", headX + headW/2, curHeadY + 80);
+
+            if (!tombstone.isSealed) {
+                if (globalParticlesInHole < particles.length) {
+                    ctx.fillStyle = "#777"; ctx.font = "bold 14px monospace"; ctx.fillText("VERROUILLÉ", tombstone.x + tombstone.w/2, ty + 40);
+                } else {
+                    ctx.fillStyle = "#fff"; ctx.font = "bold 14px monospace"; ctx.fillText("▼ GLISSER ▼", tombstone.x + tombstone.w/2, ty + 40);
+                }
+            }
+        }
+
+        function triggerSystemReset(message) {
+            isSystemResetting = true;
+            instruction.innerText = message;
+            instruction.style.color = "#ff4444";
+            scoreBoard.style.color = "#555";
+
+            setTimeout(() => {
+                blackout.style.opacity = 1;
+                setTimeout(() => {
+                    window.location.href = 'index.html';
+                }, 3000);
+            }, 3000);
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (!tombstone.isSealed) handleDebris();
+            smoothTerrain(); 
+
+            if (tombstone.isFalling && !tombstone.isSealed) {
+                tombstone.y += 45; 
+                if (tombstone.y >= baseFloorY) {
+                    tombstone.y = baseFloorY; tombstone.isSealed = true; tombstone.isFalling = false;
+                    document.body.classList.add('shake'); headY = baseFloorY - headH; 
+                    
+                    headerContainer.classList.add('sealed-mode');
+                    mainTitle.style.display = 'none'; 
+                    instruction.style.color = "#444";
+                    instruction.innerText = "[ Scellement terminé. Appuyez sur [F] pour rendre hommage. ]";
+                    scoreBoard.style.display = 'block'; 
+                    canvas.style.cursor = 'default'; 
+                    lastInteractionTime = Date.now();
+
+                    for(let i = 0; i < canvas.width; i++) {
+                        if (i > headX + 5 && i < headX + headW - 5) floorLevels[i] = headY;
+                        else floorLevels[i] = baseFloorY;
+                    }
+                }
+            }
+
+            if (tombstone.isSealed && !isSystemResetting) {
+                if (Date.now() - lastInteractionTime > 15000) {
+                    triggerSystemReset("[SYSTÈME] Désintérêt détecté. Fermeture de la session.");
+                }
+            }
+
+            let currentInHole = 0;
+            for (let i = 0; i < particles.length; i++) {
+                let p = particles[i];
+                if (tombstone.isSealed) continue; 
+                if (p.state === 1) { 
+                    p.x = mouse.x + (Math.random() - 0.5) * shovelRadius; p.y = mouse.y + (Math.random() - 0.5) * shovelRadius;
+                } 
+                else if (p.state === 2 || p.state === 3) { 
+                    let col = Math.floor(p.x);
+                    if (col < 0) { col = 0; p.vx *= -1; p.x = 0; }
+                    if (col >= canvas.width) { col = canvas.width - 1; p.vx *= -1; p.x = canvas.width - 1; }
+                    let groundY = floorLevels[col];
+                    if (p.y < groundY - particleSize - 1) {
+                        p.state = 2; p.vy += 0.8; p.x += p.vx; p.y += p.vy; p.vx *= 0.92; 
+                    } else {
+                        if (p.state === 2) {
+                            p.y = groundY - particleSize; p.vy = 0; p.vx = 0; floorLevels[col] -= 0.3; p.state = 3; 
+                        } 
+                    }
+                }
+                if (p.x > holeStartX && p.x < holeEndX && p.y > baseFloorY) currentInHole++;
+                ctx.fillStyle = p.color; ctx.fillRect(p.x, p.y, particleSize, particleSize);
+            }
+
+            globalParticlesInHole = currentInHole;
+
+            if (!tombstone.isSealed) {
+                let percent = Math.floor((globalParticlesInHole / particles.length) * 100);
+                instruction.innerText = `1. Jetez tous les débris de la DONNÉE dans l'abîme. (Progression : ${percent}%)`;
+            }
+
+            // --- 땅과 잔디 그리기 ---
+            // 1. 흙 (Soil)
+            ctx.fillStyle = "#3f2a1d"; 
+            ctx.beginPath(); ctx.moveTo(0, canvas.height); ctx.lineTo(0, baseFloorY);
+            if (!tombstone.isSealed) {
+                ctx.lineTo(holeStartX, baseFloorY); ctx.lineTo(holeStartX, holeDepth); 
+                ctx.lineTo(holeEndX, holeDepth); ctx.lineTo(holeEndX, baseFloorY);  
+            }
+            ctx.lineTo(canvas.width, baseFloorY); ctx.lineTo(canvas.width, canvas.height); ctx.fill();
+
+            // 2. 잔디 (Grass Layer)
+            ctx.fillStyle = "#4d7c0f";
+            ctx.beginPath();
+            for (let i = 0; i < canvas.width; i++) {
+                if (!tombstone.isSealed && i > holeStartX && i < holeEndX) continue;
+                ctx.fillRect(i, floorLevels[i], 1, 10);
+            }
+
+            drawTombstone();
+
+            if (tombstone.isSealed) {
+                for (let i = 0; i < flowers.length; i++) {
+                    let f = flowers[i];
+                    if (!f.isLanded) {
+                        f.vy += 0.1; f.x += f.vx; f.y += f.vy; f.rotation += f.rotSpeed;
+                        let col = Math.floor(f.x);
+                        if (col < 0) { col = 0; f.vx *= -1; } if (col >= canvas.width) { col = canvas.width - 1; f.vx *= -1; }
+                        if (f.y >= floorLevels[col] - 10) { f.y = floorLevels[col] - 10; f.isLanded = true; floorLevels[col] -= 4; }
+                    }
+                    ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.rotation); 
+                    ctx.fillStyle = f.isLanded ? "#555" : "#fff"; 
+                    ctx.font = "bold 24px serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("✿", 0, 0); ctx.restore();
+                }
+            }
+            requestAnimationFrame(animate);
+        }
+    </script>
+</body>
+</html>
